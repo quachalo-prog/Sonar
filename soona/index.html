@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <!-- Sécurité : seul le script inline dont l'empreinte est listée peut s'exécuter (mettre à jour avec tools/update-csp.mjs) -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-5XzCxIu6cs7QXjUHIMbBtwG1QID4OEWvTRy5/H6xihk='; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'none'; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-rQ5ovARhEnp/AW4/pR4jL1FgmJd7ZxdEtr6KE2U+anU='; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'none'; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1219,6 +1219,146 @@ function init(){
   if(getCurrentUser())enterApp();
 }
 init();
+})();
+
+// ========== ASSISTANT SOONA — WIDGET DE CHAT ==========
+// Mode démo : les réponses sont simulées localement.
+// En production, remplacer demoReply() par un appel à POST /api/assistant/chat.
+(function(){
+const DEMO_RESPONSES = [
+  {q:/bonjour|salut|hello|coucou|hey/i, r:"Bonjour ! Je suis l'assistant Soona. Je peux vous aider à trouver un professionnel, préparer un rendez-vous ou répondre à vos questions sur les démarches juridiques. Que puis-je faire pour vous ?"},
+  {q:/avocat|juridique|justice|tribunal|procès/i, r:"Pour trouver un avocat, utilisez la recherche par spécialité dans l'application. Avant votre rendez-vous, pensez à préparer :\n\n• Les documents relatifs à votre affaire\n• Un résumé chronologique des faits\n• Vos questions prioritaires\n• Les coordonnées des parties concernées\n\nVoulez-vous que je vous aide à choisir un avocat selon votre besoin ?"},
+  {q:/notaire|succession|héritage|donation|immobilier|acte/i, r:"Un notaire intervient pour les actes authentiques : achats immobiliers, successions, donations, contrats de mariage…\n\nDocuments à apporter :\n• Pièce d'identité\n• Livret de famille\n• Titre de propriété (si immobilier)\n• Derniers avis d'imposition\n\nJe peux vous aider à trouver un notaire dans l'application."},
+  {q:/comptable|impôt|fiscal|déclaration|tva|bilan/i, r:"Pour un rendez-vous avec un comptable, prévoyez :\n\n• Vos dernières déclarations fiscales\n• Relevés bancaires récents\n• Factures et justificatifs de dépenses\n• Statuts de votre entreprise (si applicable)\n\nUtilisez la catégorie « Comptable » dans la recherche pour trouver un professionnel près de chez vous."},
+  {q:/rendez-vous|rdv|réserver|prendre|créneau|disponibilit/i, r:"Pour prendre rendez-vous :\n\n1. Allez dans « Rechercher » (loupe en bas)\n2. Choisissez la spécialité souhaitée\n3. Sélectionnez un professionnel\n4. Cliquez sur « Prendre rendez-vous »\n5. Choisissez la date et le créneau\n\nVos rendez-vous apparaîtront ensuite dans l'onglet « Rendez-vous »."},
+  {q:/annuler|supprimer|déplacer|modifier|changer/i, r:"Pour annuler ou modifier un rendez-vous :\n\n1. Allez dans « Mes rendez-vous »\n2. Touchez le rendez-vous concerné\n3. Utilisez le bouton « Annuler »\n\nNote : l'annulation est possible jusqu'à 24h avant le rendez-vous. Pour déplacer, annulez puis reprenez un nouveau créneau."},
+  {q:/document|papier|apporter|préparer|pièce/i, r:"Les documents généralement demandés :\n\n📋 Pour tous les rendez-vous :\n• Pièce d'identité en cours de validité\n• Justificatif de domicile récent\n\n📋 Selon le professionnel :\n• Avocat : documents liés à l'affaire\n• Notaire : titre de propriété, livret de famille\n• Comptable : déclarations, relevés bancaires\n\nQuel type de professionnel allez-vous voir ?"},
+  {q:/prix|tarif|coût|combien|honoraire|paiement/i, r:"Les tarifs varient selon le professionnel et la prestation. En général :\n\n• Première consultation : souvent gratuite ou à tarif réduit\n• Les honoraires sont libres (sauf tarifs réglementés pour les notaires)\n• Demandez un devis avant toute prestation\n\nSur Soona, les tarifs indicatifs sont affichés sur la fiche de chaque professionnel."},
+  {q:/merci|super|parfait|génial|top/i, r:"Avec plaisir ! N'hésitez pas si vous avez d'autres questions. Je suis là pour vous aider à préparer vos rendez-vous. 😊"},
+  {q:/aide|help|comment|quoi|fonctionn/i, r:"Je peux vous aider avec :\n\n• 🔍 Trouver un professionnel (avocat, notaire, comptable…)\n• 📅 Comprendre comment prendre rendez-vous\n• 📋 Savoir quels documents préparer\n• 💡 Répondre à vos questions sur les démarches\n\nPosez-moi simplement votre question !"},
+];
+const FALLBACK = "Je comprends votre question. En tant qu'assistant Soona, je peux vous aider à trouver un professionnel et préparer vos rendez-vous.\n\nEssayez de me demander :\n• « Comment prendre rendez-vous ? »\n• « Quels documents apporter chez l'avocat ? »\n• « Trouver un notaire »\n\n💡 En production, je serai connecté à Claude (IA) avec une vraie mémoire de vos échanges passés.";
+
+function demoReply(msg){
+  for(const d of DEMO_RESPONSES) if(d.q.test(msg)) return d.r;
+  return FALLBACK;
+}
+
+function nl2br(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');}
+
+// Injection du CSS du chat
+const chatStyle=document.createElement('style');
+chatStyle.textContent=`
+.chat-fab{position:fixed;bottom:calc(80px + var(--safe-bottom,0px));right:16px;width:56px;height:56px;border-radius:50%;background:var(--grad-strong);color:#fff;border:none;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.25);z-index:9000;display:flex;align-items:center;justify-content:center;transition:transform .2s;}
+.chat-fab:active{transform:scale(.9);}
+.chat-fab svg{width:28px;height:28px;fill:#fff;}
+.chat-fab.has-dot::after{content:'';position:absolute;top:4px;right:4px;width:12px;height:12px;background:var(--success);border:2px solid var(--bg);border-radius:50%;}
+.chat-panel{position:fixed;bottom:0;left:0;right:0;top:0;z-index:9999;display:flex;flex-direction:column;background:var(--bg);transform:translateY(100%);transition:transform .3s ease;}
+.chat-panel.open{transform:translateY(0);}
+.chat-head{display:flex;align-items:center;gap:12px;padding:12px 16px;padding-top:calc(12px + var(--safe-top,0px));background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0;}
+.chat-head-avatar{width:40px;height:40px;border-radius:50%;background:var(--grad-strong);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:1.1rem;flex-shrink:0;}
+.chat-head-info{flex:1;min-width:0;}
+.chat-head-name{font-weight:600;font-size:0.95rem;}
+.chat-head-status{font-size:0.8rem;color:var(--success-text);display:flex;align-items:center;gap:4px;}
+.chat-head-status::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--success);}
+.chat-close{width:36px;height:36px;border-radius:50%;background:var(--bg3);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text2);font-size:1.2rem;flex-shrink:0;}
+.chat-body{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px;}
+.chat-msg{max-width:85%;padding:12px 16px;border-radius:16px;font-size:0.9375rem;line-height:1.5;word-break:break-word;}
+.chat-msg.bot{align-self:flex-start;background:var(--bg2);border:1px solid var(--border);border-bottom-left-radius:4px;}
+.chat-msg.usr{align-self:flex-end;background:var(--grad-strong);color:#fff;border-bottom-right-radius:4px;}
+.chat-msg .demo-tag{display:inline-block;font-size:0.7rem;background:var(--bg3);color:var(--text3);padding:2px 6px;border-radius:4px;margin-bottom:6px;letter-spacing:.03em;text-transform:uppercase;font-weight:600;}
+.chat-typing{align-self:flex-start;background:var(--bg2);border:1px solid var(--border);border-radius:16px;border-bottom-left-radius:4px;padding:12px 20px;display:flex;gap:4px;}
+.chat-typing span{width:7px;height:7px;border-radius:50%;background:var(--text3);animation:typingDot 1.2s infinite;}
+.chat-typing span:nth-child(2){animation-delay:.2s;}
+.chat-typing span:nth-child(3){animation-delay:.4s;}
+@keyframes typingDot{0%,60%,100%{opacity:.3;transform:scale(.8);}30%{opacity:1;transform:scale(1);}}
+.chat-input-bar{display:flex;gap:8px;padding:12px 16px;padding-bottom:calc(12px + var(--safe-bottom,0px));background:var(--bg2);border-top:1px solid var(--border);flex-shrink:0;}
+.chat-input{flex:1;padding:10px 16px;border-radius:24px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:var(--font-body);font-size:0.9375rem;outline:none;resize:none;max-height:100px;line-height:1.4;}
+.chat-input:focus{border-color:var(--accent);}
+.chat-send{width:40px;height:40px;border-radius:50%;background:var(--grad-strong);color:#fff;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:opacity .15s;}
+.chat-send:disabled{opacity:.4;cursor:default;}
+.chat-send svg{width:20px;height:20px;fill:#fff;}
+.chat-suggestions{display:flex;flex-wrap:wrap;gap:8px;padding:0 16px 8px;}
+.chat-sug{padding:8px 14px;border-radius:20px;background:var(--bg3);color:var(--text);border:1px solid var(--border);font-size:0.8125rem;cursor:pointer;font-family:var(--font-body);transition:background .15s;}
+.chat-sug:active{background:var(--border);}
+@media(min-width:600px){.chat-panel{left:auto;width:400px;right:16px;bottom:16px;top:auto;height:600px;max-height:calc(100vh - 32px);border-radius:16px;box-shadow:var(--shadow-lg);border:1px solid var(--border);}}
+`;
+document.head.appendChild(chatStyle);
+
+// HTML du FAB
+const fab=document.createElement('button');
+fab.className='chat-fab has-dot';
+fab.setAttribute('aria-label','Ouvrir l\'assistant Soona');
+fab.innerHTML='<svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.2L4 17.2V4h16v12z"/><circle cx="8" cy="10" r="1.2"/><circle cx="12" cy="10" r="1.2"/><circle cx="16" cy="10" r="1.2"/></svg>';
+document.body.appendChild(fab);
+
+// HTML du panneau
+const panel=document.createElement('div');
+panel.className='chat-panel';
+panel.setAttribute('role','dialog');
+panel.setAttribute('aria-label','Assistant Soona');
+panel.innerHTML=`
+<div class="chat-head">
+  <div class="chat-head-avatar">S</div>
+  <div class="chat-head-info">
+    <div class="chat-head-name">Assistant Soona</div>
+    <div class="chat-head-status">Mode démo</div>
+  </div>
+  <button class="chat-close" aria-label="Fermer">&times;</button>
+</div>
+<div class="chat-body" id="chat-body">
+  <div class="chat-msg bot"><div class="demo-tag">Démo</div><br>Bonjour ! 👋 Je suis l'assistant Soona.<br><br>Je peux vous aider à :<br>• Trouver un professionnel<br>• Préparer votre rendez-vous<br>• Savoir quels documents apporter<br><br>Posez-moi une question ou choisissez ci-dessous !</div>
+</div>
+<div class="chat-suggestions" id="chat-sugs">
+  <button class="chat-sug">Trouver un avocat</button>
+  <button class="chat-sug">Quels documents ?</button>
+  <button class="chat-sug">Prendre rendez-vous</button>
+  <button class="chat-sug">C'est quoi Soona ?</button>
+</div>
+<div class="chat-input-bar">
+  <textarea class="chat-input" id="chat-input" rows="1" placeholder="Écrivez votre message…" maxlength="500"></textarea>
+  <button class="chat-send" id="chat-send" disabled aria-label="Envoyer"><svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></button>
+</div>`;
+document.body.appendChild(panel);
+
+const chatBody=panel.querySelector('#chat-body');
+const chatInput=panel.querySelector('#chat-input');
+const chatSend=panel.querySelector('#chat-send');
+const chatSugs=panel.querySelector('#chat-sugs');
+
+let chatOpen=false;
+fab.addEventListener('click',()=>{chatOpen=true;panel.classList.add('open');fab.style.display='none';fab.classList.remove('has-dot');chatInput.focus();});
+panel.querySelector('.chat-close').addEventListener('click',()=>{chatOpen=false;panel.classList.remove('open');fab.style.display='';});
+
+function addMsg(text,cls){
+  const d=document.createElement('div');
+  d.className='chat-msg '+cls;
+  if(cls==='bot')d.innerHTML='<div class="demo-tag">Démo</div><br>'+nl2br(text);
+  else d.innerHTML=nl2br(text);
+  chatBody.appendChild(d);
+  chatBody.scrollTop=chatBody.scrollHeight;
+  return d;
+}
+function showTyping(){
+  const d=document.createElement('div');d.className='chat-typing';d.id='typing';
+  d.innerHTML='<span></span><span></span><span></span>';
+  chatBody.appendChild(d);chatBody.scrollTop=chatBody.scrollHeight;
+}
+function hideTyping(){const t=chatBody.querySelector('#typing');if(t)t.remove();}
+
+function sendChat(msg){
+  if(!msg.trim())return;
+  addMsg(msg,'usr');
+  chatInput.value='';chatSend.disabled=true;
+  chatSugs.style.display='none';
+  showTyping();
+  const delay=400+Math.random()*800;
+  setTimeout(()=>{hideTyping();addMsg(demoReply(msg),'bot');},delay);
+}
+chatSend.addEventListener('click',()=>sendChat(chatInput.value));
+chatInput.addEventListener('input',()=>{chatSend.disabled=!chatInput.value.trim();chatInput.style.height='auto';chatInput.style.height=Math.min(chatInput.scrollHeight,100)+'px';});
+chatInput.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat(chatInput.value);}});
+chatSugs.addEventListener('click',e=>{const b=e.target.closest('.chat-sug');if(b)sendChat(b.textContent);});
 })();
 </script>
 </body>
